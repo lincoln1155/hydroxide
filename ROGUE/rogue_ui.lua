@@ -13636,6 +13636,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             local currently_dropping = false
             local droppedTools = {}
+            local last_idol_use = 0
+            local idol_use_in_progress = false
 
             local function ExecutePath(test_mode)
                 if not cheat_client or not cheat_client.config then
@@ -14379,18 +14381,85 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                 end))
 
+                local function UseIdolOfWar()
+                    if idol_use_in_progress then return false end
+                    if not trinket_bot.path_running then return false end
+                    if shared.is_unloading then return false end
+                    if emergency_gate_requested then return false end
+                    if currently_dropping then return false end
+                    if not plr.Character or not FindFirstChild(plr.Character, "HumanoidRootPart") then return false end
+                    
+                    local character = plr.Character
+                    if cs:HasTag(character, "Danger") or cs:HasTag(character, "SnapCool") then return false end
+
+                    local idol = FindFirstChild(plr.Backpack, "Idol of War")
+                    if not idol then return false end
+
+                    local cooldown = Options.IdolOfWarCooldown and Options.IdolOfWarCooldown.Value or 30
+                    if tick() - last_idol_use < cooldown then return false end
+
+                    idol_use_in_progress = true
+                    library:Notify("Using Idol of War...")
+
+                    local humanoid = FindFirstChildOfClass(character, "Humanoid")
+                    if not humanoid then
+                        idol_use_in_progress = false
+                        return false
+                    end
+
+                    humanoid:EquipTool(idol)
+                    task.wait(0.3)
+
+                    if not trinket_bot.path_running or emergency_gate_requested then
+                        local gate_bp = FindFirstChild(plr.Backpack, "Gate")
+                        if gate_bp then humanoid:EquipTool(gate_bp) end
+                        idol_use_in_progress = false
+                        return false
+                    end
+
+                    utility:LeftClick()
+                    task.wait(0.4)
+
+                    last_idol_use = tick()
+                    library:Notify("Idol of War used!")
+
+                    local gate_bp = FindFirstChild(plr.Backpack, "Gate")
+                    if gate_bp then
+                        humanoid:EquipTool(gate_bp)
+                        task.wait(0.2)
+                    end
+
+                    idol_use_in_progress = false
+                    return true
+                end
+
+                track_connection("idol_of_war", utility:Connection(rs.Heartbeat, LPH_NO_VIRTUALIZE(function()
+                    if not trinket_bot.path_running or shared.is_unloading or idol_use_in_progress then return end
+                    if not (Toggles.AutoIdolOfWar and Toggles.AutoIdolOfWar.Value) then return end
+                    if emergency_gate_requested or currently_dropping then return end
+
+                    local cooldown = Options.IdolOfWarCooldown and Options.IdolOfWarCooldown.Value or 30
+                    if tick() - last_idol_use < cooldown then return end
+                    if not FindFirstChild(plr.Backpack, "Idol of War") then return end
+                    if not plr.Character or cs:HasTag(plr.Character, "Danger") or cs:HasTag(plr.Character, "SnapCool") then return end
+
+                    task.spawn(UseIdolOfWar)
+                end)))
+
                 auto_trinket_connection = track_connection("auto_trinket", utility:Connection(rs.Heartbeat, LPH_NO_VIRTUALIZE(function()
                     if not plr.Character or shared.is_unloading or not trinket_bot.path_running then return end
 
                     if currently_dropping then return end
 
                     if Toggles.ReequipGateInLoop and Toggles.ReequipGateInLoop.Value then
-                        local gate_in_backpack = FindFirstChild(plr.Backpack, "Gate")
-                        local gate_equipped = FindFirstChild(plr.Character, "Gate")
-                        if gate_in_backpack and not gate_equipped then
-                            local humanoid = FindFirstChildOfClass(plr.Character, "Humanoid")
-                            if humanoid then
-                                humanoid:EquipTool(gate_in_backpack)
+                        if not idol_use_in_progress then
+                            local gate_in_backpack = FindFirstChild(plr.Backpack, "Gate")
+                            local gate_equipped = FindFirstChild(plr.Character, "Gate")
+                            if gate_in_backpack and not gate_equipped then
+                                local humanoid = FindFirstChildOfClass(plr.Character, "Humanoid")
+                                if humanoid then
+                                    humanoid:EquipTool(gate_in_backpack)
+                                end
                             end
                         end
                     end
@@ -16672,6 +16741,22 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Default = false
             })
 
+            group_trinket_bot:AddToggle("AutoIdolOfWar", {
+                Text = "Auto Idol of War",
+                Default = false,
+                Tooltip = "Automatically uses Idol of War from backpack during path (never interrupts gate)"
+            })
+
+            group_trinket_bot:AddSlider("IdolOfWarCooldown", {
+                Text = "Idol Cooldown (s)",
+                Default = 30,
+                Min = 10,
+                Max = 120,
+                Rounding = 0,
+                Compact = true,
+                Tooltip = "Minimum seconds between Idol of War uses"
+            })
+
             group_trinket_bot:AddLabel("Auto Drop Items")
             group_trinket_bot:AddDropdown("AutoDropItems", {
                 Text = "Auto Drop",
@@ -16795,6 +16880,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 if Options.EmergencyServerhopConditions then Options.EmergencyServerhopConditions:SetValue(settings.emergency_serverhop_conditions or {}) end
                 if Toggles.JoinOldestServer then Toggles.JoinOldestServer:SetValue(settings.join_oldest_server or false) end
                 if Toggles.AutoPopPDs then Toggles.AutoPopPDs:SetValue(settings.auto_pop_pds or false) end
+                if Toggles.AutoIdolOfWar then Toggles.AutoIdolOfWar:SetValue(settings.auto_idol_of_war or false) end
+                if Options.IdolOfWarCooldown then Options.IdolOfWarCooldown:SetValue(settings.idol_of_war_cooldown or 30) end
                 if Options.AutoDropItems then Options.AutoDropItems:SetValue(settings.auto_drop_items or {}) end
                 if Toggles.KickOnTrinket then Toggles.KickOnTrinket:SetValue(settings.kick_on_trinket or false) end
                 if Options.KickTrinketList then Options.KickTrinketList:SetValue(settings.kick_trinket_list or {}) end
@@ -17725,6 +17812,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             emergency_serverhop_conditions = Options.EmergencyServerhopConditions and Options.EmergencyServerhopConditions.Value or {},
                             join_oldest_server = Toggles.JoinOldestServer and Toggles.JoinOldestServer.Value or false,
                             auto_pop_pds = Toggles.AutoPopPDs and Toggles.AutoPopPDs.Value or false,
+                            auto_idol_of_war = Toggles.AutoIdolOfWar and Toggles.AutoIdolOfWar.Value or false,
+                            idol_of_war_cooldown = Options.IdolOfWarCooldown and Options.IdolOfWarCooldown.Value or 30,
                             auto_drop_items = Options.AutoDropItems and Options.AutoDropItems.Value or {},
                             kick_on_trinket = Toggles.KickOnTrinket and Toggles.KickOnTrinket.Value or false,
                             kick_trinket_list = Options.KickTrinketList and Options.KickTrinketList.Value or {},
